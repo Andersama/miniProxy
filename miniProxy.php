@@ -25,6 +25,9 @@ $forceCORS = false;
 //Setting to false may improve compatibility with some sites, but also exposes more information about end users to proxied sites.
 $anonymize = true;
 
+//Set to true to request resources through the proxy instead of directly
+$proxify = false;
+
 //Start/default URL that that will be proxied when miniProxy is first loaded in a browser/accessed directly with no URL to proxy.
 //If empty, miniProxy will show its own landing page.
 $startURL = "";
@@ -205,7 +208,7 @@ function rel2abs($rel, $base) {
 }
 
 //Proxify contents of url() references in blocks of CSS text.
-function proxifyCSS($css, $baseURL) {
+function proxifyCSS($css, $baseURL, $prefixProxy = false) {
   // Add a "url()" wrapper to any CSS @import rules that only specify a URL without the wrapper,
   // so that they're proxified when searching for "url()" wrappers below.
   $sourceLines = explode("\n", $css);
@@ -236,17 +239,25 @@ function proxifyCSS($css, $baseURL) {
           $url = trim($url, "\"");
         }
         if (stripos($url, "data:") === 0) return "url(" . $url . ")"; //The URL isn't an HTTP URL but is actual binary data. Don't proxify it.
-        return "url(" . PROXY_PREFIX . rel2abs($url, $baseURL) . ")";
+        if(prefixProxy){  
+          return "url(" . PROXY_PREFIX . rel2abs($url, $baseURL) . ")";
+        } else {
+          return "url(".rel2abs($url, $baseURL) . ")";
+        }
     },
     $normalizedCSS);
 }
 
 //Proxify "srcset" attributes (normally associated with <img> tags.)
-function proxifySrcset($srcset, $baseURL) {
+function proxifySrcset($srcset, $baseURL, $prefixProxy = false) {
   $sources = array_map("trim", explode(",", $srcset)); //Split all contents by comma and trim each value
   $proxifiedSources = array_map(function($source) use ($baseURL) {
     $components = array_map("trim", str_split($source, strrpos($source, " "))); //Split by last space and trim
-    $components[0] = PROXY_PREFIX . rel2abs(ltrim($components[0], "/"), $baseURL); //First component of the split source string should be an image URL; proxify it
+    if($prefixProxy){
+      $components[0] = PROXY_PREFIX . rel2abs(ltrim($components[0], "/"), $baseURL); //First component of the split source string should be an image URL; proxify it
+    } else {
+      $components[0] = rel2abs(ltrim($components[0], "/"), $baseURL);
+    }
     return implode($components, " "); //Recombine the components into a single source
   }, $sources);
   $proxifiedSrcset = implode(", ", $proxifiedSources); //Recombine the sources into a single "srcset"
@@ -257,6 +268,8 @@ function proxifySrcset($srcset, $baseURL) {
 if (isset($_POST["miniProxyFormAction"])) {
   $url = $_POST["miniProxyFormAction"];
   unset($_POST["miniProxyFormAction"]);
+} elseif (isset($_REQUEST["url"])) {
+  $url = filter_var($_REQUEST["url"],FILTER_SANITIZE_URL);
 } else {
   $queryParams = Array();
   parse_str($_SERVER["QUERY_STRING"], $queryParams);
@@ -397,7 +410,11 @@ if (stripos($contentType, "text/html") !== false) {
       if (!empty($content)) {
         $splitContent = preg_split("/=/", $content);
         if (isset($splitContent[1])) {
-          $element->setAttribute("content", $splitContent[0] . "=" . PROXY_PREFIX . rel2abs($splitContent[1], $url));
+          if($proxify){
+            $element->setAttribute("content", $splitContent[0] . "=" . PROXY_PREFIX . rel2abs($splitContent[1], $url));
+          } else {
+            $element->setAttribute("content", $splitContent[0] . "=" . rel2abs($splitContent[1], $url));
+          }
         }
       }
     }
@@ -421,7 +438,9 @@ if (stripos($contentType, "text/html") !== false) {
       $attrContent = $element->getAttribute($attrName);
       if ($attrName == "href" && preg_match("/^(about|javascript|magnet|mailto):/i", $attrContent)) continue;
       $attrContent = rel2abs($attrContent, $url);
-      $attrContent = PROXY_PREFIX . $attrContent;
+      if($proxify){
+        $attrContent = PROXY_PREFIX . $attrContent;
+      }
       $element->setAttribute($attrName, $attrContent);
     }
   }
@@ -450,7 +469,7 @@ if (stripos($contentType, "text/html") !== false) {
 
     $scriptElem = $doc->createElement("script",
       '(function() {
-
+        var proxify = "' . $proxify . '"
         if (window.XMLHttpRequest) {
 
           function parseURI(url) {
@@ -502,7 +521,9 @@ if (stripos($contentType, "text/html") !== false) {
               if (arguments[1] !== null && arguments[1] !== undefined) {
                 var url = arguments[1];
                 url = rel2abs("' . $url . '", url);
-                url = "' . PROXY_PREFIX . '" + url;
+                if (proxify){
+                  url = "' . PROXY_PREFIX . '" + url;
+                }
                 arguments[1] = url;
               }
               return proxied.apply(this, [].slice.call(arguments));
