@@ -421,15 +421,15 @@ if (stripos($contentType, "text/html") !== false) {
   }
   //Profixy <style> tags.
   foreach($xpath->query("//style") as $style) {
-    $style->nodeValue = proxifyCSS($style->nodeValue, $url);
+    $style->nodeValue = proxifyCSS($style->nodeValue, $url, $proxify);
   }
   //Proxify tags with a "style" attribute.
   foreach ($xpath->query("//*[@style]") as $element) {
-    $element->setAttribute("style", proxifyCSS($element->getAttribute("style"), $url));
+    $element->setAttribute("style", proxifyCSS($element->getAttribute("style"), $url, $proxify));
   }
   //Proxify "srcset" attributes in <img> tags.
   foreach ($xpath->query("//img[@srcset]") as $element) {
-    $element->setAttribute("srcset", proxifySrcset($element->getAttribute("srcset"), $url));
+    $element->setAttribute("srcset", proxifySrcset($element->getAttribute("srcset"), $url, $proxify));
   }
   //Proxify any of these attributes appearing in any tag.
   $proxifyAttributes = array("href", "src");
@@ -541,7 +541,7 @@ if (stripos($contentType, "text/html") !== false) {
 
   echo "<!-- Proxified page constructed by miniProxy -->\n" . $doc->saveHTML();
 } else if (stripos($contentType, "text/css") !== false) { //This is CSS, so proxify url() references.
-  echo proxifyCSS($responseBody, $url);
+  echo proxifyCSS($responseBody, $url, $proxify);
 } else { //This isn't a web page or CSS, so serve unmodified through the proxy with the correct headers (images, JavaScript, etc.)
   header("Content-Length: " . strlen($responseBody), true);
   echo $responseBody;
