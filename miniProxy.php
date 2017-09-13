@@ -239,7 +239,7 @@ function proxifyCSS($css, $baseURL, $prefixProxy = false) {
           $url = trim($url, "\"");
         }
         if (stripos($url, "data:") === 0) return "url(" . $url . ")"; //The URL isn't an HTTP URL but is actual binary data. Don't proxify it.
-        if(prefixProxy){  
+        if($prefixProxy){  
           return "url(" . PROXY_PREFIX . rel2abs($url, $baseURL) . ")";
         } else {
           return "url(".rel2abs($url, $baseURL) . ")";
